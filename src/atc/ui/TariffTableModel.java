@@ -10,7 +10,11 @@ public class TariffTableModel extends AbstractTableModel {
     private final TariffManager manager;
 
     private final String[] cols = {
-            "Город", "Тип", "Цена, руб/мин", "Скидка, %", "Итоговая цена, руб/мин"
+            "Город",
+            "Тип",
+            "Цена, руб/мин",
+            "Скидка, %",
+            "Итоговая цена, руб/мин"
     };
 
     public TariffTableModel(TariffManager manager) {
@@ -19,13 +23,13 @@ public class TariffTableModel extends AbstractTableModel {
 
     @Override public int getRowCount() { return manager.getTariffs().size(); }
     @Override public int getColumnCount() { return cols.length; }
-    @Override public String getColumnName(int c) { return cols[c]; }
+    @Override public String getColumnName(int col) { return cols[col]; }
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
         return switch (columnIndex) {
             case 0, 1 -> String.class;
-            default -> Double.class; // чтобы сортировалось как числа
+            default -> Double.class;
         };
     }
 

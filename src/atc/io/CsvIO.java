@@ -10,7 +10,10 @@ import java.util.List;
 
 public class CsvIO {
     public static void save(File file, List<Tariff> items) {
-        try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+        try (PrintWriter out = new PrintWriter(
+                new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+
+            out.write('\uFEFF');
             out.println("city;type;price;discount");
             for (Tariff t : items) {
                 out.printf("%s;%s;%.4f;%.2f%n",

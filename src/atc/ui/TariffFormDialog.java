@@ -20,12 +20,10 @@ public class TariffFormDialog extends JDialog {
     private JSpinner discSpin;
     private JButton okBtn, cancelBtn;
 
-    // Конструктор «добавить»
     public TariffFormDialog(Frame owner, TariffManager manager) {
         this(owner, manager, null, null);
     }
 
-    // Конструктор «изменить» (перегрузка) — изменяем визуальный вид и данные
     public TariffFormDialog(Frame owner, TariffManager manager, Tariff toEdit, Integer editIndex) {
         super(owner, true);
         this.manager = manager;
@@ -49,10 +47,9 @@ public class TariffFormDialog extends JDialog {
 
     private void buildUI() {
         cityField = new JTextField(20);
-        typeBox = new JComboBox<>(TariffType.values());
+        typeBox   = new JComboBox<>(TariffType.values());
         priceSpin = new JSpinner(new SpinnerNumberModel(1.00, 0.01, 1_000_000.0, 0.10));
-        discSpin  = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 100.0, 1.0));
-
+        discSpin  = new JSpinner(new SpinnerNumberModel(0.0,  0.0,   100.0,     1.0));
         typeBox.addItemListener(e -> { if (e.getStateChange() == ItemEvent.SELECTED) updateDiscountEnabled(); });
 
         okBtn = new JButton(editMode ? "Сохранить" : "Добавить");
@@ -86,6 +83,45 @@ public class TariffFormDialog extends JDialog {
         getContentPane().add(buttons, BorderLayout.SOUTH);
 
         updateDiscountEnabled();
+        addVerifiers();
+
+    }
+
+    private void addVerifiers() {
+        JSpinner.NumberEditor pe = (JSpinner.NumberEditor) priceSpin.getEditor();
+        pe.getTextField().setInputVerifier(new InputVerifier() {
+            @Override public boolean verify(JComponent c) {
+                try {
+                    priceSpin.commitEdit();
+                    double v = ((Number) priceSpin.getValue()).doubleValue();
+                    TariffManager.validatePrice(v);
+                    return true;
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(TariffFormDialog.this,
+                            "Цена должна быть 0.01..1 000.00",
+                            "Ошибка", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
+            }
+        });
+
+        JSpinner.NumberEditor de = (JSpinner.NumberEditor) discSpin.getEditor();
+        de.getTextField().setInputVerifier(new InputVerifier() {
+            @Override public boolean verify(JComponent c) {
+                try {
+                    discSpin.commitEdit();
+                    if (typeBox.getSelectedItem() != TariffType.PRIVILEGED) return true;
+                    double d = ((Number) discSpin.getValue()).doubleValue();
+                    TariffManager.validateDiscount(d);
+                    return true;
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(TariffFormDialog.this,
+                            "Скидка должна быть в диапазоне 0..100%",
+                            "Ошибка", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
+            }
+        });
     }
 
     private void updateDiscountEnabled() {

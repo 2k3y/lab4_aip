@@ -3,8 +3,8 @@ package atc.model;
 public class Tariff {
     private String city;
     private TariffType type;
-    private double pricePerMinute;   // базовая цена, руб/мин
-    private double discountPercent;  // 0..100, используется только для льготного
+    private double pricePerMinute;
+    private double discountPercent;
 
     public Tariff(String city, TariffType type, double pricePerMinute, double discountPercent) {
         this.city = city;
@@ -13,7 +13,6 @@ public class Tariff {
         this.discountPercent = discountPercent;
     }
 
-    // --- Геттеры/сеттеры
     public String getCity() { return city; }
     public void setCity(String city) { this.city = city; }
 
@@ -26,7 +25,6 @@ public class Tariff {
     public double getDiscountPercent() { return discountPercent; }
     public void setDiscountPercent(double discountPercent) { this.discountPercent = discountPercent; }
 
-    // Итоговая цена с учётом стратегии
     public double finalPrice() {
         if (type == TariffType.PRIVILEGED) {
             double k = 1.0 - (discountPercent / 100.0);
