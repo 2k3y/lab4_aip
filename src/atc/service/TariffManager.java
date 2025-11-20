@@ -11,10 +11,43 @@ public class TariffManager {
 
     public List<Tariff> getTariffs() { return tariffs; }
 
-    public void add(Tariff t) { tariffs.add(t); }
+    private static String normCity(String s) {
+        return s == null ? "" : s.trim().replaceAll("\\s+", " ");
+    }
+    private static double r2(double v) {
+        return Math.round(v * 100.0) / 100.0; // сравниваем по 2 знакам
+    }
+    private static boolean sameTariff(Tariff a, Tariff b) {
+        return a.getType() == b.getType()
+                && normCity(a.getCity()).equalsIgnoreCase(normCity(b.getCity()))
+                && Double.compare(r2(a.getPricePerMinute()), r2(b.getPricePerMinute())) == 0
+                && Double.compare(r2(a.getDiscountPercent()), b.getType()==TariffType.PRIVILEGED ? r2(b.getDiscountPercent()) : 0.0) == 0;
+    }
+
+    public void add(Tariff t) {
+        if (t == null) throw new TariffException("Тариф не задан");
+        validateCity(t.getCity());
+        validatePrice(t.getPricePerMinute());
+        if (t.getType() == TariffType.PRIVILEGED) validateDiscount(t.getDiscountPercent());
+
+        if (tariffs.stream().anyMatch(x -> sameTariff(x, t))) {
+            throw new TariffException("Такой тариф уже существует");
+        }
+        tariffs.add(t);
+    }
 
     public void update(int index, Tariff t) {
         if (index < 0 || index >= tariffs.size()) throw new TariffException("Неверный индекс");
+        validateCity(t.getCity());
+        validatePrice(t.getPricePerMinute());
+        if (t.getType() == TariffType.PRIVILEGED) validateDiscount(t.getDiscountPercent());
+
+        for (int i = 0; i < tariffs.size(); i++) {
+            if (i == index) continue;
+            if (sameTariff(tariffs.get(i), t)) {
+                throw new TariffException("Такой тариф уже существует");
+            }
+        }
         tariffs.set(index, t);
     }
 
