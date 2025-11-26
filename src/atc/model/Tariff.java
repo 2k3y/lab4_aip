@@ -1,4 +1,7 @@
 package atc.model;
+import java.util.Locale;
+import java.util.Objects;
+
 
 public class Tariff {
     private String city;
@@ -32,5 +35,21 @@ public class Tariff {
             return pricePerMinute * k;
         }
         return pricePerMinute;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Tariff t)) return false;
+        return Double.compare(pricePerMinute, t.pricePerMinute) == 0
+                && Double.compare(discountPercent, t.discountPercent) == 0
+                && city.trim().equalsIgnoreCase(t.city.trim())
+                && type == t.type;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(city.trim().toLowerCase(Locale.ROOT), type,
+                Double.valueOf(pricePerMinute), Double.valueOf(discountPercent));
     }
 }

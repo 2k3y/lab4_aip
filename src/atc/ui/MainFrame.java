@@ -20,6 +20,8 @@ public class MainFrame extends JFrame {
         super("АТС — тарифы (Swing)");
         buildUI();
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        pack();
+        setLocationRelativeTo(null);
     }
 
     private void buildUI() {
@@ -145,28 +147,34 @@ public class MainFrame extends JFrame {
     private void onOpen() {
         JFileChooser fc = chooser("Загрузить CSV");
         int r = fc.showOpenDialog(this);
-        if (r == JFileChooser.APPROVE_OPTION) {
-            File file = fc.getSelectedFile();
-            try {
-                CsvIO.load(file, manager.getTariffs());
-                model.fireAll();
-            } catch (TariffException ex) {
-                JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
-            }
+        if (r != JFileChooser.APPROVE_OPTION) return;
+
+        File file = fc.getSelectedFile();
+        try {
+            CsvIO.ImportResult res = CsvIO.loadAdd(file, manager.getTariffs());
+            model.fireAll();
+            JOptionPane.showMessageDialog(this,
+                    "Всего строк: " + res.getTotal() +
+                            "\nДобавлено: " + res.getAdded() +
+                            (res.getSkipped() > 0 ? "\nПропущено дублей: " + res.getSkipped() : ""),
+                    "Импорт завершён",
+                    JOptionPane.INFORMATION_MESSAGE);
+        } catch (TariffException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка импорта", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void onSave() {
         JFileChooser fc = chooser("Сохранить CSV");
         int r = fc.showSaveDialog(this);
-        if (r == JFileChooser.APPROVE_OPTION) {
-            File file = appendCsvIfMissing(fc.getSelectedFile());
-            try {
-                CsvIO.save(file, manager.getTariffs());
-                JOptionPane.showMessageDialog(this, "Сохранено: " + file.getAbsolutePath());
-            } catch (TariffException ex) {
-                JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
-            }
+        if (r != JFileChooser.APPROVE_OPTION) return;
+
+        File file = appendCsvIfMissing(fc.getSelectedFile());
+        try {
+            CsvIO.save(file, manager.getTariffs());
+            JOptionPane.showMessageDialog(this, "Сохранено: " + file.getAbsolutePath());
+        } catch (TariffException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
         }
     }
 

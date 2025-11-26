@@ -116,10 +116,13 @@ public class TariffManager {
     }
 
     public static void validatePrice(double price) {
-        if (price <= 0 || price > 1_000) throw new TariffException("Цена должна быть > 0 и разумной");
+        if (price < 0.01 || price > 1_000.00)
+            throw new TariffException("Цена должна быть 0.01..1 000.00");
     }
 
     public static void validateDiscount(double d) {
-        if (d < 0 || d > 100) throw new TariffException("Скидка должна быть 0..100%");
+        if (d < 0 || d > 100)
+            throw new TariffException("Скидка должна быть в диапазоне 0..100%");
     }
+
 }

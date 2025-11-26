@@ -8,6 +8,9 @@ import atc.service.TariffManager;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ItemEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 public class TariffFormDialog extends JDialog {
     private final TariffManager manager;
@@ -20,15 +23,33 @@ public class TariffFormDialog extends JDialog {
     private JSpinner discSpin;
     private JButton okBtn, cancelBtn;
 
+    /** Флаг: когда true — верификаторы пропускают фокус (закрытие/Отмена). */
+    private volatile boolean skipVerify = false;
+
+    // «Добавить»
     public TariffFormDialog(Frame owner, TariffManager manager) {
         this(owner, manager, null, null);
     }
 
+    // «Изменить» (перегрузка)
     public TariffFormDialog(Frame owner, TariffManager manager, Tariff toEdit, Integer editIndex) {
         super(owner, true);
         this.manager = manager;
         this.editMode = (toEdit != null);
         this.editIndex = editIndex;
+
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+
+        // Крестик — выходим без проверок
+        addWindowListener(new WindowAdapter() {
+            @Override public void windowClosing(WindowEvent e) { skipVerify = true; }
+        });
+        // Esc — выходим без проверок
+        getRootPane().registerKeyboardAction(
+                e -> { skipVerify = true; dispose(); },
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW
+        );
 
         buildUI();
         setTitle(editMode ? "Изменить тариф" : "Добавить тариф");
@@ -48,20 +69,26 @@ public class TariffFormDialog extends JDialog {
     private void buildUI() {
         cityField = new JTextField(20);
         typeBox   = new JComboBox<>(TariffType.values());
-        priceSpin = new JSpinner(new SpinnerNumberModel(1.00, 0.01, 1_000_000.0, 0.10));
-        discSpin  = new JSpinner(new SpinnerNumberModel(0.0,  0.0,   100.0,     1.0));
+        priceSpin = new JSpinner(new SpinnerNumberModel(1.00, 0.01, 1_000.00, 0.10));
+        discSpin  = new JSpinner(new SpinnerNumberModel(0.0,  0.0,  100.0,   1.0));
         typeBox.addItemListener(e -> { if (e.getStateChange() == ItemEvent.SELECTED) updateDiscountEnabled(); });
 
         okBtn = new JButton(editMode ? "Сохранить" : "Добавить");
-        cancelBtn = new JButton("Отмена");
+        cancelBtn = new JButton("Выход");
 
         okBtn.addActionListener(e -> onOk());
-        cancelBtn.addActionListener(e -> dispose());
+        // Не запускаем валидацию при переходе фокуса на «Отмена»
+        cancelBtn.setVerifyInputWhenFocusTarget(false);
+        cancelBtn.addActionListener(e -> { skipVerify = true; dispose(); });
+
+        // Enter = OK
+        getRootPane().setDefaultButton(okBtn);
 
         JPanel form = new JPanel(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(6,6,6,6);
         c.anchor = GridBagConstraints.WEST;
+
         c.gridx = 0; c.gridy = 0; form.add(new JLabel("Город:"), c);
         c.gridx = 1; form.add(cityField, c);
 
@@ -84,17 +111,42 @@ public class TariffFormDialog extends JDialog {
 
         updateDiscountEnabled();
         addVerifiers();
+    }
 
+    // ------- Верификаторы ввода (строгий формат чисел) -------
+
+    /** true, если текст НЕ является числом в формате: цифры или цифры,зз (запятая, не точка). */
+    private static boolean invalidNumericText(String txt, int maxFracDigits, boolean forbidDot) {
+        if (txt == null) return true;
+        String t = txt.replace("\u00A0", "").replace(" ", "").trim(); // убираем пробелы/НБП
+        if (t.isEmpty()) return true;
+        if (forbidDot && t.indexOf('.') >= 0) return true;            // точка запрещена
+        String frac = maxFracDigits <= 0 ? "" : "(,\\d{1," + maxFracDigits + "})?";
+        return !t.matches("\\d+" + frac);
+    }
+
+    /** Парсит проверенный текст: запятая -> точка. */
+    private static double parseStrict(String txt) {
+        String t = txt.replace("\u00A0", "").replace(" ", "").trim().replace(',', '.');
+        return Double.parseDouble(t);
     }
 
     private void addVerifiers() {
+        // PRICE
         JSpinner.NumberEditor pe = (JSpinner.NumberEditor) priceSpin.getEditor();
         pe.getTextField().setInputVerifier(new InputVerifier() {
             @Override public boolean verify(JComponent c) {
+                if (skipVerify) return true;
+                String raw = ((JSpinner.NumberEditor) priceSpin.getEditor()).getTextField().getText();
+                if (invalidNumericText(raw, 2, true)) {
+                    JOptionPane.showMessageDialog(TariffFormDialog.this,
+                            "Цена: только цифры и запятая (до 2 знаков). Точка запрещена.",
+                            "Ошибка ввода", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
                 try {
-                    priceSpin.commitEdit();
-                    double v = ((Number) priceSpin.getValue()).doubleValue();
-                    TariffManager.validatePrice(v);
+                    double v = parseStrict(raw);
+                    TariffManager.validatePrice(v); // 0.01..1000.00
                     return true;
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(TariffFormDialog.this,
@@ -105,14 +157,24 @@ public class TariffFormDialog extends JDialog {
             }
         });
 
+        // DISCOUNT
         JSpinner.NumberEditor de = (JSpinner.NumberEditor) discSpin.getEditor();
         de.getTextField().setInputVerifier(new InputVerifier() {
             @Override public boolean verify(JComponent c) {
+                if (skipVerify) return true;
+                // если не льготный — поле может быть любым (обычно отключено)
+                if (typeBox.getSelectedItem() != TariffType.PRIVILEGED) return true;
+
+                String raw = ((JSpinner.NumberEditor) discSpin.getEditor()).getTextField().getText();
+                if (invalidNumericText(raw, 2, true)) {
+                    JOptionPane.showMessageDialog(TariffFormDialog.this,
+                            "Скидка: только цифры и запятая (до 2 знаков). Точка запрещена.",
+                            "Ошибка ввода", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
                 try {
-                    discSpin.commitEdit();
-                    if (typeBox.getSelectedItem() != TariffType.PRIVILEGED) return true;
-                    double d = ((Number) discSpin.getValue()).doubleValue();
-                    TariffManager.validateDiscount(d);
+                    double v = parseStrict(raw);
+                    TariffManager.validateDiscount(v); // 0..100
                     return true;
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(TariffFormDialog.this,
@@ -124,27 +186,34 @@ public class TariffFormDialog extends JDialog {
         });
     }
 
+    // ------- Логика формы -------
+
     private void updateDiscountEnabled() {
         boolean isPriv = typeBox.getSelectedItem() == TariffType.PRIVILEGED;
         discSpin.setEnabled(isPriv);
     }
 
-    private double dbl(Object v) { return ((Number) v).doubleValue(); }
-
     private void onOk() {
         try {
+            // Принудительно дергаем верификаторы (даже если фокус еще в поле)
+            JFormattedTextField pTF = ((JSpinner.NumberEditor) priceSpin.getEditor()).getTextField();
+            if (!pTF.getInputVerifier().verify(pTF)) return;
+
+            JFormattedTextField dTF = ((JSpinner.NumberEditor) discSpin.getEditor()).getTextField();
+            if (!dTF.getInputVerifier().verify(dTF)) return;
+
             String city = cityField.getText();
             TariffManager.validateCity(city);
 
             TariffType type = (TariffType) typeBox.getSelectedItem();
-            double price = dbl(priceSpin.getValue());
+
+            double price = parseStrict(pTF.getText());
             TariffManager.validatePrice(price);
 
-            double disc = dbl(discSpin.getValue());
+            double disc = 0.0;
             if (type == TariffType.PRIVILEGED) {
+                disc = parseStrict(dTF.getText());
                 TariffManager.validateDiscount(disc);
-            } else {
-                disc = 0.0;
             }
 
             Tariff t = new Tariff(city.trim(), type, price, disc);
