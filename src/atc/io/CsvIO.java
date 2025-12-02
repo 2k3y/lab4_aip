@@ -1,9 +1,9 @@
-// CsvIO.java
 package atc.io;
 
 import atc.model.Tariff;
 import atc.model.TariffType;
 import atc.service.TariffException;
+import atc.service.TariffManager;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -29,7 +29,7 @@ public class CsvIO {
                 out.println("city;type;price;discount");
 
                 for (Tariff t : items) {
-                    out.printf("%s;%s;%.4f;%.2f%n",
+                    out.printf(Locale.ROOT, "%s;%s;%.4f;%.2f%n",
                             escape(t.getCity()),
                             t.getType().name(),
                             t.getPricePerMinute(),
@@ -52,11 +52,15 @@ public class CsvIO {
     }
 
     /**
-     * Импорт «добавлением»: список НЕ очищаем; добавляем записи.
-     * Обязательна корректная шапка: city;type;price;discount (без учёта регистра и лишних пробелов).
-     * Точные дубликаты пропускаются. Запятая в числах допускается (конвертируется в точку).
+     * Импорт «добавлением» ИМЕННО В БД:
+     *   - читаем CSV;
+     *   - для каждой строки создаём Tariff;
+     *   - добавляем его через TariffManager.add(...);
+     *   - дубликаты считаем «пропущенными», а не ошибкой.
+     *
+     * Текущие данные в БД НЕ очищаются.
      */
-    public static ImportResult loadAdd(File file, List<Tariff> target) {
+    public static ImportResult loadAdd(File file, TariffManager manager) {
         int added = 0, skipped = 0, total = 0;
 
         try (BufferedReader br = new BufferedReader(
@@ -65,15 +69,18 @@ public class CsvIO {
             String line;
             int lineNo = 0;
 
-            // 1) Находим первую непустую строку и проверяем, что это шапка
+            // 1) шапка
             String headerLine = null;
             while ((line = br.readLine()) != null) {
                 lineNo++;
                 line = stripBom(line);
-                if (!line.trim().isEmpty()) { headerLine = line; break; }
+                if (!line.trim().isEmpty()) {
+                    headerLine = line;
+                    break;
+                }
             }
             if (headerLine == null) {
-                // пустой файл — просто нечего импортировать
+                // пустой файл
                 return new ImportResult(0, 0, 0);
             }
             if (!isValidHeader(headerLine)) {
@@ -82,7 +89,7 @@ public class CsvIO {
                                 ". Ожидалось: city;type;price;discount");
             }
 
-            // 2) Читаем данные
+            // 2) данные
             while ((line = br.readLine()) != null) {
                 lineNo++;
                 if (line.trim().isEmpty()) continue;
@@ -95,30 +102,35 @@ public class CsvIO {
                 try {
                     String city = unescape(parts[0]).trim();
                     TariffType type = TariffType.valueOf(parts[1].trim().toUpperCase(Locale.ROOT));
-                    double price = parseDouble(parts[2]); // допускаем запятую
+                    double price = parseDouble(parts[2]);
                     double disc  = parseDouble(parts[3]);
 
-                    // строгая валидация
-                    atc.service.TariffManager.validateCity(city);
-                    atc.service.TariffManager.validatePrice(price);
+                    // строгая валидация (как в ТарифМенеджере)
+                    TariffManager.validateCity(city);
+                    TariffManager.validatePrice(price);
                     if (type == TariffType.PRIVILEGED) {
-                        atc.service.TariffManager.validateDiscount(disc);
-                    } else if (disc != 0.0) {
+                        TariffManager.validateDiscount(disc);
+                    } else if (Math.abs(disc) > 1e-9) {
                         throw new TariffException("для обычного тарифа скидка должна быть 0");
                     }
 
                     Tariff t = new Tariff(city, type, price, disc);
                     total++;
 
-                    if (exists(target, t)) {
-                        skipped++;
-                    } else {
-                        target.add(t);
+                    try {
+                        manager.add(t);   // добавляем через БИЗНЕС-ЛОГИКУ -> попадёт в БД
                         added++;
+                    } catch (TariffException ex) {
+                        String msg = ex.getMessage();
+                        if (msg != null && msg.toLowerCase(Locale.ROOT).contains("уже существует")) {
+                            skipped++; // дубль – просто пропускаем
+                        } else {
+                            throw new TariffException("Строка " + lineNo + ": " + ex.getMessage());
+                        }
                     }
                 } catch (TariffException | NumberFormatException e) {
                     throw new TariffException("Строка " + lineNo + ": " + e.getMessage());
-                } catch (IllegalArgumentException e) { // неверный enum Type
+                } catch (IllegalArgumentException e) {
                     throw new TariffException("Строка " + lineNo + ": неизвестный тип тарифа: " + parts[1]);
                 }
             }
@@ -160,28 +172,6 @@ public class CsvIO {
     }
 
     private static String unescape(String s) { return s; }
-
-    /** Проверка точного дубликата (город+тип+цена+скидка) с округлением. */
-    private static boolean exists(List<Tariff> list, Tariff t) {
-        for (Tariff x : list) {
-            if (eqCity(x.getCity(), t.getCity())
-                    && x.getType() == t.getType()
-                    && Double.compare(round4(x.getPricePerMinute()), round4(t.getPricePerMinute())) == 0
-                    && Double.compare(round2(x.getDiscountPercent()), round2(t.getDiscountPercent())) == 0) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean eqCity(String a, String b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        return a.trim().equalsIgnoreCase(b.trim());
-    }
-
-    private static double round2(double v) { return Math.round(v * 100.0) / 100.0; }
-    private static double round4(double v) { return Math.round(v * 10000.0) / 10000.0; }
 
     /** Результат импорта. */
     public static class ImportResult {

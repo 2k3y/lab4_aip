@@ -1,5 +1,8 @@
 package atc;
 
+import atc.data.SqliteTariffRepository;
+import atc.service.TariffException;
+import atc.service.TariffManager;
 import atc.ui.MainFrame;
 
 import javax.swing.*;
@@ -11,10 +14,25 @@ public class App {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (Exception ignored) {}
-            MainFrame f = new MainFrame();
-            f.setMinimumSize(new Dimension(900, 520));
-            f.setLocationRelativeTo(null);
-            f.setVisible(true);
+
+            try {
+                // ВАЖНО: один-единственный файл БД — atc.db в корне проекта
+                SqliteTariffRepository repo =
+                        new SqliteTariffRepository("jdbc:sqlite:atc.db");
+                TariffManager manager = new TariffManager(repo);
+
+                MainFrame f = new MainFrame(manager);
+                f.setMinimumSize(new Dimension(900, 520));
+                f.setLocationRelativeTo(null);
+                f.setVisible(true);
+            } catch (TariffException ex) {
+                JOptionPane.showMessageDialog(
+                        null,
+                        ex.getMessage(),
+                        "Ошибка работы с БД",
+                        JOptionPane.ERROR_MESSAGE
+                );
+            }
         });
     }
 }

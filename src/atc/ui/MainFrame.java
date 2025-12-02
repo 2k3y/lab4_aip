@@ -12,12 +12,16 @@ import java.awt.*;
 import java.io.File;
 
 public class MainFrame extends JFrame {
-    private final TariffManager manager = new TariffManager();
-    private final TariffTableModel model = new TariffTableModel(manager);
+
+    private final TariffManager manager;
+    private final TariffTableModel model;
     private JTable table;
 
-    public MainFrame() {
+    public MainFrame(TariffManager manager) {
         super("АТС — тарифы (Swing)");
+        this.manager = manager;
+        this.model = new TariffTableModel(manager);
+
         buildUI();
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         pack();
@@ -56,15 +60,18 @@ public class MainFrame extends JFrame {
         JMenuBar mb = new JMenuBar();
 
         JMenu file = new JMenu("Файл");
-        JMenuItem open = new JMenuItem("Открыть…");
-        JMenuItem save = new JMenuItem("Сохранить как…");
+        JMenuItem open = new JMenuItem("Загрузить из CSV…");
+        JMenuItem save = new JMenuItem("Сохранить в CSV…");
         JMenuItem exit = new JMenuItem("Выход");
 
         open.addActionListener(e -> onOpen());
         save.addActionListener(e -> onSave());
         exit.addActionListener(e -> dispose());
 
-        file.add(open); file.add(save); file.addSeparator(); file.add(exit);
+        file.add(open);
+        file.add(save);
+        file.addSeparator();
+        file.add(exit);
 
         JMenu act = new JMenu("Действия");
         JMenuItem avg  = new JMenuItem("Средняя цена");
@@ -75,7 +82,9 @@ public class MainFrame extends JFrame {
         sum.addActionListener(e -> onTotal());
         inc.addActionListener(e -> onIncreaseAll());
 
-        act.add(avg); act.add(sum); act.add(inc);
+        act.add(avg);
+        act.add(sum);
+        act.add(inc);
 
         mb.add(file);
         mb.add(act);
@@ -104,11 +113,19 @@ public class MainFrame extends JFrame {
         if (viewRow < 0) return;
         int modelRow = table.convertRowIndexToModel(viewRow);
 
-        int res = JOptionPane.showConfirmDialog(this, "Удалить выбранный тариф?", "Подтверждение",
-                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        int res = JOptionPane.showConfirmDialog(this,
+                "Удалить выбранный тариф?",
+                "Подтверждение",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+
         if (res == JOptionPane.YES_OPTION) {
-            manager.remove(modelRow);
-            model.fireAll();
+            try {
+                manager.remove(modelRow);
+                model.fireAll();
+            } catch (TariffException ex) {
+                JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
@@ -131,8 +148,10 @@ public class MainFrame extends JFrame {
     }
 
     private void onIncreaseAll() {
-        String s = JOptionPane.showInputDialog(this, "На сколько процентов изменить цены? (например, 10 или -5)");
+        String s = JOptionPane.showInputDialog(this,
+                "На сколько процентов изменить цены? (например, 10 или -5)");
         if (s == null) return;
+
         try {
             double p = Double.parseDouble(s.trim().replace(',', '.'));
             manager.increaseAllPrices(p);
@@ -144,14 +163,15 @@ public class MainFrame extends JFrame {
         }
     }
 
+    /** Загрузка из CSV → через TariffManager → в БД. */
     private void onOpen() {
-        JFileChooser fc = chooser("Загрузить CSV");
+        JFileChooser fc = chooser("Загрузить CSV в БД");
         int r = fc.showOpenDialog(this);
         if (r != JFileChooser.APPROVE_OPTION) return;
 
         File file = fc.getSelectedFile();
         try {
-            CsvIO.ImportResult res = CsvIO.loadAdd(file, manager.getTariffs());
+            CsvIO.ImportResult res = CsvIO.loadAdd(file, manager);
             model.fireAll();
             JOptionPane.showMessageDialog(this,
                     "Всего строк: " + res.getTotal() +
@@ -164,8 +184,9 @@ public class MainFrame extends JFrame {
         }
     }
 
+    /** Сохранение текущего состояния БД в CSV. */
     private void onSave() {
-        JFileChooser fc = chooser("Сохранить CSV");
+        JFileChooser fc = chooser("Сохранить CSV (экспорт из БД)");
         int r = fc.showSaveDialog(this);
         if (r != JFileChooser.APPROVE_OPTION) return;
 
